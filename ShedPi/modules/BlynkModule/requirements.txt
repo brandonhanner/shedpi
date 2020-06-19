@@ -1,0 +1,8 @@
+azure-iot-device~=2.0.0
+RPI.GPIO
+adafruit-blinka
+adafruit-circuitpython-ads1x15
+w1thermsensor
+pymodbus
+blynk-library-python
+gpiozero
