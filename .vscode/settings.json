@@ -1,0 +1,7 @@
+{
+    "azure-iot-edge.defaultPlatform": {
+        "platform": "arm32v7",
+        "alias": null
+    },
+    "python.pythonPath": "/Users/Casey/anaconda3/bin/python"
+}

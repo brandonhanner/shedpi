@@ -1,2 +1,3 @@
 config/
 .env
+blynk_auth.txt

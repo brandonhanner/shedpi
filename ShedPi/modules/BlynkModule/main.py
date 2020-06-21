@@ -7,85 +7,68 @@ import os
 import sys
 from azure.iot.device.aio import IoTHubModuleClient
 
-import BlynkLib
-
-from pymodbus.client.asynchronous.serial import (AsyncModbusSerialClient as ModbusClient)
-from pymodbus.client.asynchronous import schedulers
+import BlynkLib as blynk
 
 import Adafruit_DHT
 
-from w1thermsensor import W1ThermSensor
+import adc
+import bms
+import solar
 
-from gpiozero import LED
-
-import board
-import busio
-
-i2c = busio.I2C(board.SCL, board.SDA)
-
-import adafruit_ads1x15.ads1115 as ADS
-
-from adafruit_ads1x15.analog_in import AnalogIn
-
-
-class ADC(object):
+class Shed(object):
     def __init__(self):
-        self.ads = ADS.ADS1115(i2c)
-        self.ads.gain = 1
-        self.chan = AnalogIn(self.ads, ADS.P0)
+        self.adc = adc.ADC()
+        self.battery = bms.battery(self.adc)
+        self.solar = solar.Solar('/dev/ttyS0')
 
-        self.s0 = LED(19)
-        self.s1 = LED(13)
-        self.s2 = LED(6)
-        self.s3 = LED(5)
+        f = open("blynk_auth.txt", "r")
 
-        self.mux_en = LED(26)
+        self.BLYNK_AUTH = f.readline()
 
-        self.mux_en.off()
+        self.blynk = blynk.Blynk(self.BLYNK_AUTH)
 
-        self.bcdPins = [self.s0,self.s1,self.s2,self.s3]
-
-        #S3 -> GPIO5
-        #S2 -> GPIO6
-        #S1 -> GPIO13
-        #S0 -> GPIO19 lsb
-        #EN -> GPIO26
-
-        #CELL4 -> C15
-        #CELL3 -> C14
-        #CELL2 -> C13
-        #CELL1 -> C12
-
-        #CURRENT1 -> C1
-        #CURRENT2 -> C0
-
-        #UART -> UART
-
-        #ADS -> I2C
-    def capture_readings(self):
-        for i in [0,1,12,13,14,15]:
-            volts = self.read_channel(i)
-            print("Channel: {} Voltage: {}".format(i,volts))
-            
-    def read_channel(self, channel):
-        self.set_channel(channel)
-        time.sleep(.05)
-        return self.chan.voltage
+        self.battery_v_adc_pin = 0     #battery voltage
+        self.battery_i_pin = 1     #battery current
+        self.cell_1_pin = 2        #cell 1 voltage
+        self.cell_2_pin = 3        #cell 2 voltage
+        self.cell_3_pin = 4        #cell 3 voltage
+        self.cell_4_pin = 5        #cell 4 voltage
+        self.solar_v_pin = 6       #solar voltage
+        self.solar_w_pin = 7       #solar wattage
+        self.battery_t_pin = 8     #battery temperature
+        self.charging_w_pin = 9    #battery charging current
+        self.load_i_pin = 10       #load current
+        self.charging_indicator_pin = 11
+        self.battery_v_solar_pin = 12
 
 
-    def set_channel(self, channel):
-        for j in range(0,4):
-                digit = (channel & (1 << j)) >> j
-                # print("{} element: {}".format(j,digit))
-                if digit == 1:
-                    self.bcdPins[j].on()
-                else:
-                    self.bcdPins[j].off()
+    def update_blynk(self):
+        self.blynk.virtual_write(self.battery_v_adc_pin, self.battery.voltage)
+        self.blynk.virtual_write(self.battery_i_pin, (self.solar.charging_current - self.battery.load_current))
+        self.blynk.virtual_write(self.cell_1_pin, self.battery.cell_voltages[0])
+        self.blynk.virtual_write(self.cell_2_pin, self.battery.cell_voltages[1])
+        self.blynk.virtual_write(self.cell_3_pin, self.battery.cell_voltages[2])
+        self.blynk.virtual_write(self.cell_4_pin, self.battery.cell_voltages[3])
+        self.blynk.virtual_write(self.solar_v_pin, self.solar.solar_voltage)
+        self.blynk.virtual_write(self.solar_w_pin, self.solar.solar_power)
+        self.blynk.virtual_write(self.battery_t_pin, self.battery.temperature)
+        self.blynk.virtual_write(self.charging_w_pin, (self.solar.charging_current - self.battery.load_current) * (self.solar.battery_voltage-0.5))
+        self.blynk.virtual_write(self.load_i_pin, self.battery.load_current)
+        self.blynk.virtual_write(self.battery_v_solar_pin,self.solar.battery_voltage)
 
-adc = ADC()
+        if self.solar.charging_status == "deactivated":
+            self.blynk.virtual_write(self.charging_indicator_pin,0)
+        else:
+            self.blynk.virtual_write(self.charging_indicator_pin,255)
+
+
+shed = Shed()
 
 while True:
 
-    adc.capture_readings()
+    shed.update_blynk()
+    shed.blynk.run()
+
+    #print("{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}\t{:.3f}".format(shed.battery.cell_voltages[0],shed.battery.cell_voltages[1],shed.battery.cell_voltages[2],shed.battery.cell_voltages[3],shed.battery.voltage))
     
     time.sleep(1)

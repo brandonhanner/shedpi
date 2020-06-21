@@ -6,3 +6,4 @@ w1thermsensor
 pymodbus
 blynk-library-python
 gpiozero
+minimalmodbus
